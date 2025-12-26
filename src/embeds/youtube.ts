@@ -13,11 +13,15 @@ export async function youtubeEmbed(post: RedditPost, link: string, head: HTMLEle
         const clipEmbed = html.querySelector('meta[name="twitter:player"]')?.getAttribute('content');
         const thumbnail = html.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
 
+        const width = (post.oembed?.width && post.oembed.width > 500) ? post.oembed.width : 1280;
+        const height = (post.oembed?.height && post.oembed.height > 500) ? post.oembed.height : 720;
+
         if (thumbnail) {
-            head.image(thumbnail, post.oembed?.width, post.oembed?.height);
+            head.image(thumbnail, width, height);
         }
         if (clipEmbed) {
-            head.video(clipEmbed, post.oembed?.width, post.oembed?.height, 'text/html');
+            head.meta('twitter:card', 'player');
+            head.video(clipEmbed, width, height, 'text/html');
         }
 
         return;
@@ -32,10 +36,48 @@ export async function youtubeEmbed(post: RedditPost, link: string, head: HTMLEle
     const id = YOUTUBE_EXTRACTOR[url.hostname]?.(url) ?? null;
 
     if (id) {
-        url.hostname = 'www.youtube.com';
-        url.pathname = '/embed/' + id;
+        // Discord doesn't support iframe embeds - use koutube.com API to get direct video stream
+        const koutubeApiUrl = `https://koutube.com/api/watch?v=${id}`;
 
-        head.video(url.toString(), post.oembed?.width, post.oembed?.height, 'text/html');
-        head.image(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`, post.oembed?.width, post.oembed?.height);
+        try {
+            const koutubeData = await fetch(koutubeApiUrl, { ...CACHE_CONFIG }).then(r => r.json()) as {
+                playerStreamUrl?: string;
+                videoWidth?: string;
+                videoHeight?: string;
+                image?: string;
+                error?: string;
+            };
+
+            if (koutubeData.error) {
+                throw new Error(koutubeData.error);
+            }
+
+            const videoUrl = koutubeData.playerStreamUrl;
+            const width = parseInt(koutubeData.videoWidth || '1280');
+            const height = parseInt(koutubeData.videoHeight || '720');
+            const thumbnailUrl = koutubeData.image;
+
+            if (videoUrl) {
+                head.meta('twitter:card', 'player');
+                head.meta('og:video', videoUrl);
+                head.meta('og:video:secure_url', videoUrl);
+                head.meta('og:video:type', 'video/mp4');
+                head.meta('og:video:width', width.toString());
+                head.meta('og:video:height', height.toString());
+                head.meta('twitter:player', videoUrl);
+                head.meta('twitter:player:width', width.toString());
+                head.meta('twitter:player:height', height.toString());
+            }
+
+            if (thumbnailUrl) {
+                head.image(thumbnailUrl, width, height);
+            } else {
+                head.image(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`, width, height);
+            }
+        } catch (error) {
+            // Fallback to simple image embed if koutube API fails
+            head.meta('twitter:card', 'summary_large_image');
+            head.image(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`, 1280, 720);
+        }
     }
 }
