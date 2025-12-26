@@ -69,62 +69,65 @@ router
     // On missing routes we simply redirect
     .all('*', fallbackRedirect);
 
-addEventListener('fetch', (event) => {
-    event.respondWith(router.handle(event.request).catch((err) => {
-        if (err instanceof ResponseError) {
-            if (err.status === 403) {
-                console.log('Ignoring 403 error from reddit, likely NSFW post.');
-                return new Response('Forbidden.', { status: err.status });
+export default {
+    async fetch(request: Request, _env: Record<string, unknown>, ctx: ExecutionContext): Promise<Response> {
+        try {
+            return await router.handle(request);
+        } catch (err) {
+            if (err instanceof ResponseError) {
+                if (err.status === 403) {
+                    console.log('Ignoring 403 error from reddit, likely NSFW post.');
+                    return new Response('Forbidden.', { status: err.status });
+                }
+                if (err.status === 429) {
+                    console.log('Ignoring rate-limit error.');
+                    return new Response('Rate Limited.', { status: err.status });
+                }
+                if (err.status >= 500) {
+                    console.log('Reddit server-side error. Ignoring. Receive status:', err.status, err.message);
+                    return new Response('Reddit server side error.', { status: err.status });
+                }
+            } else if (err instanceof DOMException && err.name === 'TimeoutError') {
+                return new Response('Reddit Timeout.', { status: 502, statusText: 'Gateway Timeout' });
             }
-            if (err.status === 429) {
-                console.log('Ignoring rate-limit error.');
-                return new Response('Rate Limited.', { status: err.status });
+
+            // Extend the event lifetime until the response from Sentry has resolved.
+            console.error(err);
+            if (sentry) {
+                ctx.waitUntil(
+                    // Sends a request to Sentry and returns the response promise.
+                    sentry.captureException(err as Error, {
+                        tags: {
+                            level: 'handler',
+                        },
+                        request: {
+                            url: request.url,
+                            method: request.method,
+                            headers: Object.fromEntries(request.headers.entries()),
+                        },
+                        user: {
+                            ip: request.headers.get('cf-connecting-ip') ?? undefined,
+                        },
+                    }).catch(console.error)
+                );
             }
-            if (err.status >= 500) {
-                console.log('Reddit server-side error. Ignoring. Receive status:', err.status, err.message);
-                return new Response('Reddit server side error.', { status: err.status });
+
+            const html = new HTMLElement('html', {});
+            const head = html.appendChild(new HTMLElement('head', {}));
+            head.appendChild(httpEquiv(getOriginalUrl(request.url, false)));
+            const body = html.appendChild(new HTMLElement('body', {}));
+            body.appendChild(new HTMLElement('h1', {}, 'Internal Server Error'));
+            body.appendChild(new HTMLElement('p', {}, (err as Error).message));
+
+            // Respond to the original request while the error is being logged (above).
+            if (Math.random() < 0.1) {
+                // If a post consistently fails to embed, we show an error embed (10% chance of happening, to avoid caching errors)
+                head.meta('og:description', `Failed to parse reddit post, please report bug!\n\n${GITHUB_LINK}/issues/new`);
+                head.meta('theme-color', '#e3242b');
+                return HtmlResponse(html.toString());
+            } else {
+                return HtmlResponse(html.toString(), { status: 500 });
             }
-        } else if (err instanceof DOMException && err.name === 'TimeoutError') {
-            return new Response('Reddit Timeout.', { status: 502, statusText: 'Gateway Timeout' });
         }
-
-        // Extend the event lifetime until the response from Sentry has resolved.
-        // Docs: https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods
-        console.error(err);
-        if (sentry) {
-            event.waitUntil(
-                // Sends a request to Sentry and returns the response promise.
-                sentry.captureException(err, {
-                    tags: {
-                        level: 'handler',
-                    },
-                    request: {
-                        url: event.request.url,
-                        method: event.request.method,
-                        headers: Object.fromEntries(event.request.headers.entries()),
-                    },
-                    user: {
-                        ip: event.request.headers.get('cf-connecting-ip') ?? undefined,
-                    },
-                }).catch(console.error)
-            );
-        }
-
-        const html = new HTMLElement('html', {});
-        const head = html.appendChild(new HTMLElement('head', {}));
-        head.appendChild(httpEquiv(getOriginalUrl(event.request.url, false)));
-        const body = html.appendChild(new HTMLElement('body', {}));
-        body.appendChild(new HTMLElement('h1', {}, 'Internal Server Error'));
-        body.appendChild(new HTMLElement('p', {}, err.message));
-
-        // Respond to the original request while the error is being logged (above).
-        if (Math.random() < 0.1) {
-            // If a post consistently fails to embed, we show an error embed (10% chance of happening, to avoid caching errors)
-            head.meta('og:description', `Failed to parse reddit post, please report bug!\n\n${GITHUB_LINK}/issues/new`);
-            head.meta('theme-color', '#e3242b');
-            return HtmlResponse(html.toString());
-        } else {
-            return HtmlResponse(html.toString(), { status: 500 });
-        }
-    }));
-});
+    },
+};
