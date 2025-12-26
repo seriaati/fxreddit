@@ -10,12 +10,12 @@ import { fallbackRedirect, getOriginalUrl, redirectPage } from './util';
 import { handleOEmbed } from './reddit/oembed';
 import ResponseError from './response_error';
 
-const sentry = new Sentry({
+const sentry = (typeof SENTRY_ENDPOINT !== 'undefined' && SENTRY_ENDPOINT) ? new Sentry({
     dsn: SENTRY_ENDPOINT,
 
     // Performance Monitoring
     // tracesSampleRate: 1.0, // Capture 100% of the transactions, reduce in production!
-});
+}) : null;
 
 const router = Router();
 
@@ -91,22 +91,24 @@ addEventListener('fetch', (event) => {
         // Extend the event lifetime until the response from Sentry has resolved.
         // Docs: https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods
         console.error(err);
-        event.waitUntil(
-            // Sends a request to Sentry and returns the response promise.
-            sentry.captureException(err, {
-                tags: {
-                    level: 'handler',
-                },
-                request: {
-                    url: event.request.url,
-                    method: event.request.method,
-                    headers: Object.fromEntries(event.request.headers.entries()),
-                },
-                user: {
-                    ip: event.request.headers.get('cf-connecting-ip') ?? undefined,
-                },
-            }).catch(console.error)
-        );
+        if (sentry) {
+            event.waitUntil(
+                // Sends a request to Sentry and returns the response promise.
+                sentry.captureException(err, {
+                    tags: {
+                        level: 'handler',
+                    },
+                    request: {
+                        url: event.request.url,
+                        method: event.request.method,
+                        headers: Object.fromEntries(event.request.headers.entries()),
+                    },
+                    user: {
+                        ip: event.request.headers.get('cf-connecting-ip') ?? undefined,
+                    },
+                }).catch(console.error)
+            );
+        }
 
         const html = new HTMLElement('html', {});
         const head = html.appendChild(new HTMLElement('head', {}));

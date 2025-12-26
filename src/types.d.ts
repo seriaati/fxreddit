@@ -1,1 +1,1 @@
-declare const SENTRY_ENDPOINT: string;
+declare const SENTRY_ENDPOINT: string | undefined;
