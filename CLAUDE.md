@@ -146,7 +146,7 @@ src/
 - 4-space indentation
 - Single quotes
 - Semicolons required
-- See [.eslintrc.yml](.eslintrc.yml)
+- See [eslint.config.mjs](eslint.config.mjs)
 
 ### Constants and Configuration
 All URLs and headers defined in [src/constants.ts](src/constants.ts):
