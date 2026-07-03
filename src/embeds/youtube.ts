@@ -5,7 +5,7 @@ import '../html';
 
 /** Converts the youtube link to a video embed url */
 export async function youtubeEmbed(post: RedditPost, link: string, head: HTMLElement) {
-    const url: URL = new URL(link);
+    const url: URL = new URL(link.replace('&amp;', '&'));
 
     // Clip links need another request to extract a proper url for embedding
     if (url.pathname.startsWith('/clip/')) {
@@ -74,7 +74,7 @@ export async function youtubeEmbed(post: RedditPost, link: string, head: HTMLEle
             } else {
                 head.image(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`, width, height);
             }
-        } catch (error) {
+        } catch {
             // Fallback to simple image embed if koutube API fails
             head.meta('twitter:card', 'summary_large_image');
             head.image(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`, 1280, 720);

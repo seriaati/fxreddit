@@ -66,6 +66,8 @@ export async function twitchClipEmbed(post: RedditPost, link: string, head: HTML
     head.video(embeddingUrl.toString(), width, height, 'text/html');
 
     if (post.oembed?.thumbnail_url) {
-        head.image(post.oembed.thumbnail_url, width, height);
+        head.image(post.oembed.thumbnail_url, post.oembed?.thumbnail_width ?? width, post.oembed?.thumbnail_height ?? height);
+    } else if (post.preview_image_url) {
+        head.image(post.preview_image_url, width, height);
     }
 }
