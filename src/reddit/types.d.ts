@@ -32,10 +32,13 @@ export interface RedditListingData {
         height: number;
     };
     media_metadata?: Record<string, {
+        e?: string; // 'Image' | 'AnimatedImage'
         s?: {
             y: number; // height
             x: number; // width
-            u: string;
+            u?: string; // missing on animated images
+            gif?: string;
+            mp4?: string;
         };
     } | undefined>;
     gallery_data?: {

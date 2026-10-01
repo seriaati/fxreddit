@@ -35,21 +35,24 @@ export function parseRedditPost(metadata: RedditListingData): RedditPost {
     if (metadata.media_metadata && metadata.gallery_data?.items) {
         for (const { media_id, caption } of metadata.gallery_data.items) {
             const value = metadata.media_metadata[media_id];
-            if (!value?.s) continue;
+            // Animated images have no 'u', only 'gif' and 'mp4'
+            const url = value?.s?.u ?? value?.s?.gif;
+            if (!value?.s || !url) continue;
             media_metadata.push({
                 width: value.s.x,
                 height: value.s.y,
-                url: value.s.u,
+                url,
                 caption: caption,
             });
         }
     } else if (metadata.media_metadata) {
         for (const values of Object.values(metadata.media_metadata)) {
-            if (!values?.s) continue;
+            const url = values?.s?.u ?? values?.s?.gif;
+            if (!values?.s || !url) continue;
             media_metadata.push({
                 width: values.s.x,
                 height: values.s.y,
-                url: values.s.u,
+                url,
             });
         }
     } else if (isDefined(crosspost?.media_metadata)) {
