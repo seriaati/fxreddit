@@ -1,5 +1,6 @@
-import { HTMLElement } from 'node-html-parser';
-import { PollData, RedditPost } from './types';
+import { HTMLElement, TextNode } from 'node-html-parser';
+import { MediaItem, PollData, RedditPost } from './types';
+import { compileComponentEmbed } from './component_embed';
 import { youtubeEmbed } from '../embeds/youtube';
 import { twitchClipEmbed } from '../embeds/twitch';
 import { twitterLinkEmbed } from '../embeds/twitter';
@@ -56,7 +57,7 @@ function getDomainHandler(domain?: string, url?: string) {
     }
 }
 
-export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
+export async function postToHtml(post: RedditPost, origin: string): Promise<HTMLElement> {
     const html = new HTMLElement('html', {});
     const head = html.appendChild(new HTMLElement('head', {}));
     const originalUrl = `https://www.reddit.com${post.permalink}`;
@@ -91,6 +92,8 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
     const descriptionStatus = [];
 
     let type = 'object';
+    let embedMedia = post.media;
+    let embedSupported = true;
 
     switch (post.post_hint) {
         case 'image':
@@ -107,9 +110,11 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
                 // head.video(packagedVideo.source.url, width, height);
                 // Proxied endpoint which resolves to the current video url, to avoid using expiring links
                 head.video(`/v${post.permalink}`, width, height);
+                embedMedia = [{ kind: 'video', url: `/v${post.permalink}` }];
             } else {
                 // If we can't find a video with audio, we'll just settle with the one provided by Reddit
                 head.video(post.video_url ?? post.url, post.resolution?.width, post.resolution?.height);
+                embedMedia = [{ kind: 'video', url: post.video_url ?? post.url }];
             }
             break;
         }
@@ -119,6 +124,13 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
             if (domainHandler) {
                 type = domainHandler.type;
                 await domainHandler.handler(post, post.url, head);
+                const handlerMedia = getHandlerMedia(head);
+                if (handlerMedia === null) {
+                    // An iframe player can't go in a component embed, keep the playable OG card instead
+                    embedSupported = false;
+                } else if (handlerMedia.length) {
+                    embedMedia = handlerMedia;
+                }
             } else if (post.media_metadata && post.media_metadata.length) {
                 head.meta('twitter:card', 'summary_large_image');
                 const amount = post.media_metadata.length;
@@ -159,6 +171,15 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
 
     head.meta('og:type', type);
 
+    // Discord renders this instead of the OG tags, which remain the fallback
+    const componentEmbed = embedSupported ? compileComponentEmbed(post, origin, embedMedia) : null;
+    if (componentEmbed) {
+        const script = head.appendChild(new HTMLElement('script', {}));
+        script.setAttribute('id', 'discord:component-embed');
+        script.setAttribute('type', 'application/json');
+        script.appendChild(new TextNode(componentEmbed, script));
+    }
+
     if (post.comment?.author) {
         const { author, description: comment } = post.comment;
         const commentText = `Comment by u/${author}${comment ? `:\n${comment}` : ''}`;
@@ -179,6 +200,17 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
     }
 
     return html;
+}
+
+/** The media a domain handler put into the OG tags, or null if it is a player that only works as an iframe */
+function getHandlerMedia(head: HTMLElement): MediaItem[] | null {
+    const content = (property: string) => head.querySelector(`meta[property="${property}"]`)?.getAttribute('content');
+    const video = content('og:video');
+    if (video) {
+        return content('og:video:type') === 'video/mp4' ? [{ kind: 'video', url: video }] : null;
+    }
+    const image = content('og:image');
+    return image ? [{ kind: 'image', url: image }] : [];
 }
 
 function compilePollData({ options, total_vote_count }: PollData) {

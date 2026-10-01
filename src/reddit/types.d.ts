@@ -49,6 +49,21 @@ export interface RedditListingData {
     };
     poll_data?: PollData;
     crosspost_parent_list?: RedditListingData[];
+    // Used by the component embed
+    created_utc?: number;
+    edited?: number | false;
+    score?: number;
+    upvote_ratio?: number;
+    over_18?: boolean;
+    spoiler?: boolean;
+    locked?: boolean;
+    stickied?: boolean;
+    link_flair_text?: string | null;
+    is_original_content?: boolean;
+    distinguished?: string | null;
+    is_submitter?: boolean;
+    removed_by_category?: string | null;
+    sr_detail?: { community_icon?: string | null; icon_img?: string | null } | null; // requested with ?sr_detail=1
 }
 
 export interface RedditMedia {
@@ -115,6 +130,31 @@ export interface RedditPost {
         height: number;
     };
     poll_data?: PollData;
+    // Used by the component embed
+    id?: string;
+    created_utc?: number;
+    edited?: boolean;
+    score?: number;
+    upvote_ratio?: number;
+    num_comments?: number;
+    nsfw?: boolean;
+    spoiler?: boolean;
+    locked?: boolean;
+    stickied?: boolean;
+    flair?: string;
+    is_original_content?: boolean;
+    distinguished?: string;
+    is_submitter?: boolean;
+    removed?: boolean;
+    subreddit_icon?: string;
+    media?: MediaItem[]; // ordered images and videos, URLs unescaped
+    crosspost?: RedditPost;
+}
+
+export interface MediaItem {
+    kind: 'image' | 'video';
+    url: string; // absolute, or a path on this worker (video proxy)
+    caption?: string;
 }
 
 export interface Image {

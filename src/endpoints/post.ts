@@ -29,7 +29,7 @@ export async function handlePost(request: IRequest, short: boolean, resolver: (i
 
     try {
         const post = await resolver(id, name, slug, ref);
-        const html = await postToHtml(post);
+        const html = await postToHtml(post, new URL(url).origin);
 
         return new Response(html.toString(), {
             headers,
@@ -79,7 +79,11 @@ async function fetch_post_json(url: string) {
         headers['Cookie'] = loid;
     }
 
-    return await fetch(url, {
+    // sr_detail adds the subreddit icon used by the component embed
+    const withDetail = new URL(url);
+    withDetail.searchParams.set('sr_detail', '1');
+
+    return await fetch(withDetail, {
         signal: AbortSignal.timeout(2000),
         headers, ...CACHE_CONFIG
     });
@@ -156,7 +160,7 @@ async function get_short_url_post(id: string) {
     return await get_post(`${response.url}.json`);
 }
 
-async function get_untyped_post(id: string, subreddit?: string, slug?: string, commentRef?: string) {
+export async function get_untyped_post(id: string, subreddit?: string, slug?: string, commentRef?: string) {
     const url = get_post_url(undefined, id, subreddit, slug, commentRef);
     return await get_post(url, commentRef);
 }
