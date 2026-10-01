@@ -133,7 +133,9 @@ function get_post_url(type: string | undefined, id: string, subreddit?: string, 
     } else if (commentRef) {
         url += `/comments/${id}/comment/${cleanSpoiler(commentRef)}.json`;
     } else {
-        url += `/${cleanSpoiler(id)}.json`;
+        // Without a slug, /r/<sub>/<id>.json redirects to a URL with the raw title (breaks on non-ASCII titles and drops the query),
+        // the ids are global so this needs no subreddit or user
+        url = `${REDDIT_BASE_URL}/comments/${cleanSpoiler(id)}.json`;
     }
 
     return url;
