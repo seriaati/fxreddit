@@ -5,7 +5,7 @@ import { REDDIT_BASE_URL } from '../constants';
 // Discord component embed: https://discord.com/developers/docs/link-previews/component-embeds
 // The serialized payload must stay within 3000 bytes, otherwise Discord silently falls back to the OG tags.
 const MAX_BYTES = 3000;
-const MAX_GALLERY = 10; // across the whole embed
+const GALLERY_LIMITS = [10, 4, 1]; // 10 is the maximum across the whole embed, fewer when the media URLs don't fit
 const MIN_BODY = 200; // below this, the context is crowding out the main text
 export const ACCENT_COLOR = 0xff4500;
 
@@ -17,28 +17,6 @@ const LIMITS = [
 
 type Limits = typeof LIMITS[number];
 type Component = Record<string, unknown>;
-
-// ---------- media slot store ----------
-// Embeds reference short same-domain URLs (/m/<post>/<slot>.jpg|mp4) which redirect to the real media,
-// keeping signed Reddit URLs out of the byte budget. Discord requests them again later, so on a miss
-// the media endpoint re-renders the post to fill the store.
-const MAX_SLOTS = 5000;
-const slotStore = new Map<string, string>();
-
-export function getMediaSlot(postId: string, slot: string): string | undefined {
-    return slotStore.get(`${postId}/${slot}`);
-}
-
-function saveSlots(slots: Map<string, string>) {
-    for (const [key, url] of slots) {
-        slotStore.delete(key);
-        slotStore.set(key, url);
-    }
-    for (const key of slotStore.keys()) {
-        if (slotStore.size <= MAX_SLOTS) break;
-        slotStore.delete(key);
-    }
-}
 
 // ---------- text helpers ----------
 const userUrl = (user: string) => `${REDDIT_BASE_URL}/user/${user}`;
@@ -109,18 +87,10 @@ function block(texts: string[], thumbnail?: string): Component[] {
 }
 
 class Composer {
-    readonly slots = new Map<string, string>();
-
-    constructor(private readonly post: RedditPost, private readonly media: MediaItem[], private readonly origin: string) {}
-
-    slot(name: string, item: MediaItem) {
-        const real = item.url.startsWith('/') ? `${this.origin}${item.url}` : item.url;
-        this.slots.set(`${this.post.id}/${name}`, real);
-        return `${this.origin}/m/${this.post.id}/${name}.${item.kind === 'video' ? 'mp4' : 'jpg'}`;
-    }
+    constructor(private readonly post: RedditPost, private readonly media: MediaItem[], private readonly maxGallery: number) {}
 
     compose(limits: Limits, bodyLength: number) {
-        const { post, media } = this;
+        const { post, media, maxGallery } = this;
         const comment = post.comment;
         const main = comment ?? post;
         const components: Component[] = [];
@@ -137,8 +107,7 @@ class Composer {
             const title = `**${escapeMarkdown(unescapeHtml(post.title))}**`;
             texts.push(body ? `${title}\n${body}` : title);
         }
-        const icon = post.subreddit_icon ? this.slot('a', { kind: 'image', url: post.subreddit_icon }) : undefined;
-        components.push(...block(texts, icon));
+        components.push(...block(texts, post.subreddit_icon));
 
         const poll = !comment && post.poll_data ? pollText(post.poll_data) : null;
         if (poll) {
@@ -150,8 +119,8 @@ class Composer {
             const spoiler = post.nsfw || post.spoiler;
             components.push(separator(false), {
                 type: 12,
-                items: media.slice(0, MAX_GALLERY).map((item, i) => ({
-                    media: { url: this.slot(`${i}`, item) },
+                items: media.slice(0, maxGallery).map(item => ({
+                    media: { url: item.url },
                     ...(item.caption ? { description: cut(item.caption, 200) } : {}),
                     ...(spoiler ? { spoiler: true } : {}),
                 })),
@@ -168,8 +137,7 @@ class Composer {
                 const by = `**[r/${crosspost.subreddit}](${shortUrl(crosspost.id)})** · [u/${escapeMarkdown(crosspost.author)}](${userUrl(crosspost.author)}) · ${timestamp(crosspost.created_utc, 'd')}`;
                 const body = crosspost.description ? `\n${cut(redditMarkdown(crosspost.description), limits.quote)}` : '';
                 const quoted = `${quote(`**${escapeMarkdown(cut(unescapeHtml(crosspost.title), 150))}**${body}`)}\n> -# ⬆️ ${formatCount(crosspost.score)} · 💬 ${formatCount(crosspost.num_comments)}`;
-                const thumbnail = crosspost.subreddit_icon ? this.slot('qa', { kind: 'image', url: crosspost.subreddit_icon }) : undefined;
-                components.push(...block([`-# 🔀 Crossposted from\n${by}`, quoted], thumbnail));
+                components.push(...block([`-# 🔀 Crossposted from\n${by}`, quoted], crosspost.subreddit_icon));
             }
         }
 
@@ -183,7 +151,7 @@ class Composer {
         if (post.spoiler) footer.push('⚠️ Spoiler');
         if (post.locked) footer.push('🔒 Locked');
         if (post.stickied) footer.push('📌 Pinned');
-        if (media.length > MAX_GALLERY) footer.push(`🖼️ ${MAX_GALLERY} of ${media.length}`);
+        if (media.length > maxGallery) footer.push(`🖼️ ${maxGallery} of ${media.length}`);
 
         // Slug-free links, a CJK slug costs 9 bytes per character once percent-encoded
         const link = comment
@@ -210,41 +178,45 @@ const encoder = new TextEncoder();
  * Returns null when the post has no id or the payload cannot fit, the page then only carries OG tags.
  * @param media overrides the post's media, e.g. with what a domain handler resolved
  */
-export function compileComponentEmbed(post: RedditPost, origin: string, media = post.media ?? []): string | null {
+export function compileComponentEmbed(post: RedditPost, media = post.media ?? []): string | null {
     if (!post.id) {
         return null;
     }
 
     const body = [...redditMarkdown((post.comment ?? post).description)];
     const wanted = Math.min(body.length, MIN_BODY);
-    let best: { json: string, slots: Map<string, string> } | null = null;
+    let best: string | null = null;
 
-    for (const limits of LIMITS) {
-        const composer = new Composer(post, media, origin);
-        const fits = (n: number) => encoder.encode(composer.compose(limits, n)).length <= MAX_BYTES;
-        if (!fits(0)) {
-            continue;
-        }
+    for (const maxGallery of GALLERY_LIMITS) {
+        for (const limits of LIMITS) {
+            const composer = new Composer(post, media, maxGallery);
+            const fits = (n: number) => encoder.encode(composer.compose(limits, n)).length <= MAX_BYTES;
+            if (!fits(0)) {
+                continue;
+            }
 
-        // Longest body that fits
-        let low = 0, high = body.length;
-        while (low < high) {
-            const mid = Math.ceil((low + high) / 2);
-            if (fits(mid)) {
-                low = mid;
-            } else {
-                high = mid - 1;
+            // Longest body that fits
+            let low = 0, high = body.length;
+            while (low < high) {
+                const mid = Math.ceil((low + high) / 2);
+                if (fits(mid)) {
+                    low = mid;
+                } else {
+                    high = mid - 1;
+                }
+            }
+
+            best = composer.compose(limits, low);
+            if (low >= wanted) {
+                break;
             }
         }
 
-        best = { json: composer.compose(limits, low), slots: composer.slots };
-        if (low >= wanted) {
+        // Only drop media when nothing fits at all
+        if (best) {
             break;
         }
     }
 
-    if (best) {
-        saveSlots(best.slots);
-    }
-    return best?.json ?? null;
+    return best;
 }

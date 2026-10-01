@@ -153,7 +153,7 @@ export interface RedditPost {
 
 export interface MediaItem {
     kind: 'image' | 'video';
-    url: string; // absolute, or a path on this worker (video proxy)
+    url: string;
     caption?: string;
 }
 

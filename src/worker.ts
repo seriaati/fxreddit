@@ -5,7 +5,6 @@ import { httpEquiv } from './html';
 import { handleGalleryLinkPost, handleProfilePost, handleShortLinkPost, handleSubredditPost, handleUntypedCommentsLink } from './endpoints/post';
 import { handleShare } from './endpoints/share';
 import { getVideo } from './endpoints/video';
-import { handleMedia } from './endpoints/media';
 import { GITHUB_LINK } from './constants';
 import { fallbackRedirect, getOriginalUrl, redirectPage } from './util';
 import { handleOEmbed } from './reddit/oembed';
@@ -33,8 +32,6 @@ router
     .get('/security.txt', SECURITY_TXT)
     .get('/blog', fallbackRedirect)
     .get('/new', fallbackRedirect)
-    // Component embed media, must come before the static file rules below
-    .get('/m/:id/:file', handleMedia)
     // Some static files we don't support
     .get('/*.ico', NOT_FOUND)
     .get('/*.png', NOT_FOUND)

@@ -120,8 +120,8 @@ function getMedia(metadata: RedditListingData, crosspost?: RedditPost): MediaIte
             }
         }
     } else if (metadata.media?.reddit_video) {
-        // Same proxy the og:video tag uses, the fallback_url has no audio
-        items.push({ kind: 'video', url: `/v${metadata.permalink}` });
+        // No audio, compile.ts swaps in the packaged video when it finds one
+        items.push({ kind: 'video', url: metadata.media.reddit_video.fallback_url });
     } else if (metadata.post_hint === 'image' && metadata.url) {
         items.push({ kind: 'image', url: unescapeHtml(metadata.url) });
     } else if (metadata.preview?.images?.[0]?.source?.url) {

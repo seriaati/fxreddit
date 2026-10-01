@@ -29,7 +29,7 @@ export async function handlePost(request: IRequest, short: boolean, resolver: (i
 
     try {
         const post = await resolver(id, name, slug, ref);
-        const html = await postToHtml(post, new URL(url).origin);
+        const html = await postToHtml(post);
 
         return new Response(html.toString(), {
             headers,
@@ -160,7 +160,7 @@ async function get_short_url_post(id: string) {
     return await get_post(`${response.url}.json`);
 }
 
-export async function get_untyped_post(id: string, subreddit?: string, slug?: string, commentRef?: string) {
+async function get_untyped_post(id: string, subreddit?: string, slug?: string, commentRef?: string) {
     const url = get_post_url(undefined, id, subreddit, slug, commentRef);
     return await get_post(url, commentRef);
 }

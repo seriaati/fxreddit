@@ -57,7 +57,7 @@ function getDomainHandler(domain?: string, url?: string) {
     }
 }
 
-export async function postToHtml(post: RedditPost, origin: string): Promise<HTMLElement> {
+export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
     const html = new HTMLElement('html', {});
     const head = html.appendChild(new HTMLElement('head', {}));
     const originalUrl = `https://www.reddit.com${post.permalink}`;
@@ -110,7 +110,8 @@ export async function postToHtml(post: RedditPost, origin: string): Promise<HTML
                 // head.video(packagedVideo.source.url, width, height);
                 // Proxied endpoint which resolves to the current video url, to avoid using expiring links
                 head.video(`/v${post.permalink}`, width, height);
-                embedMedia = [{ kind: 'video', url: `/v${post.permalink}` }];
+                // Discord doesn't play the video behind the /v redirect, the embed links the file itself
+                embedMedia = [{ kind: 'video', url: packagedVideo.url }];
             } else {
                 // If we can't find a video with audio, we'll just settle with the one provided by Reddit
                 head.video(post.video_url ?? post.url, post.resolution?.width, post.resolution?.height);
@@ -172,7 +173,7 @@ export async function postToHtml(post: RedditPost, origin: string): Promise<HTML
     head.meta('og:type', type);
 
     // Discord renders this instead of the OG tags, which remain the fallback
-    const componentEmbed = embedSupported ? compileComponentEmbed(post, origin, embedMedia) : null;
+    const componentEmbed = embedSupported ? compileComponentEmbed(post, embedMedia) : null;
     if (componentEmbed) {
         const script = head.appendChild(new HTMLElement('script', {}));
         script.setAttribute('id', 'discord:component-embed');
