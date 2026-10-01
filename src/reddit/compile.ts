@@ -85,7 +85,7 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
 
     head.meta('og:site_name', 'rxddit.com');
     head.meta('twitter:site', 'rxddit.com');
-    head.meta('theme-color', '#ff581a');
+    head.meta('theme-color', '#ff4500');
 
     let descriptionText = post.description;
     const descriptionStatus = [];
