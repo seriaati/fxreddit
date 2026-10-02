@@ -18,7 +18,6 @@ const LIMITS = [
 type Limits = typeof LIMITS[number];
 type Component = Record<string, unknown>;
 
-// ---------- text helpers ----------
 const userUrl = (user: string) => `${REDDIT_BASE_URL}/user/${user}`;
 const subredditUrl = (subreddit: string) => `${REDDIT_BASE_URL}/r/${subreddit}`;
 const shortUrl = (id?: string) => `https://redd.it/${id}`;
@@ -74,11 +73,9 @@ function pollText({ options, total_vote_count, voting_end_timestamp }: PollData)
     return `📊 **Poll** · ${formatCount(total_vote_count)} votes · ${state} ${timestamp(voting_end_timestamp / 1000, 'R')}\n${lines.join('\n')}`;
 }
 
-// ---------- layout ----------
 const separator = (divider: boolean, spacing = 2) => ({ type: 14, divider, spacing });
 const text = (content: string) => ({ type: 10, content });
 
-/** A section with a thumbnail, or plain text displays when there is no image */
 function block(texts: string[], thumbnail?: string): Component[] {
     if (!thumbnail) {
         return texts.map(text);
@@ -87,7 +84,7 @@ function block(texts: string[], thumbnail?: string): Component[] {
 }
 
 class Composer {
-    constructor(private readonly post: RedditPost, private readonly media: MediaItem[], private readonly maxGallery: number) {}
+    constructor(private readonly post: RedditPost, private readonly media: MediaItem[], private readonly maxGallery: number) { }
 
     compose(limits: Limits, bodyLength: number) {
         const { post, media, maxGallery } = this;
@@ -95,16 +92,16 @@ class Composer {
         const main = comment ?? post;
         const components: Component[] = [];
 
-        // 1. header: community icon, community and author, reply context, title and body
+        // Community icon, community and author, reply context, title and body
         const author = [`[u/${escapeMarkdown(main.author)}](${userUrl(main.author)})`, ...badges(main)].join(' · ');
-        const texts = [`### [r/${post.subreddit}](${subredditUrl(post.subreddit)})\n-# ${author}`];
+        const texts = [`## [r/${post.subreddit}](${subredditUrl(post.subreddit)})\n-# ${author}`];
         if (comment) {
-            const title = `**${escapeMarkdown(cut(unescapeHtml(post.title), limits.reply))}**`;
+            const title = `### ${escapeMarkdown(cut(unescapeHtml(post.title), limits.reply))}`;
             texts.push(`-# ↩️ Replying to **[u/${escapeMarkdown(post.author)}](${shortUrl(post.id)})**\n${quote(title)}`);
             texts.push(cut(redditMarkdown(comment.description), bodyLength) || '\u200b');
         } else {
             const body = cut(redditMarkdown(post.description), bodyLength);
-            const title = `**${escapeMarkdown(unescapeHtml(post.title))}**`;
+            const title = `### ${escapeMarkdown(unescapeHtml(post.title))}`;
             texts.push(body ? `${title}\n${body}` : title);
         }
         components.push(...block(texts, post.subreddit_icon));
@@ -114,7 +111,7 @@ class Composer {
             components.push(separator(false), text(poll));
         }
 
-        // 2. media gallery, comment links show the post's media as well
+        // Media gallery, comment links show the post's media as well
         if (media.length) {
             const spoiler = post.nsfw || post.spoiler;
             components.push(separator(false), {
@@ -127,7 +124,7 @@ class Composer {
             });
         }
 
-        // 3. crosspost as the quoted post, its media is already in the gallery since crossposts inherit it
+        // Crosspost as the quoted post, its media is already in the gallery since crossposts inherit it
         const crosspost = post.crosspost;
         if (crosspost && !comment) {
             components.push(separator(true));
@@ -141,7 +138,7 @@ class Composer {
             }
         }
 
-        // 4. footer and buttons
+        // Footer and buttons
         const ratio = !comment && post.upvote_ratio != null ? ` (${Math.round(post.upvote_ratio * 100)}%)` : '';
         const footer = [`⬆️ **${formatCount(main.score)}**${ratio}`];
         if (!comment) footer.push(`💬 **${formatCount(post.num_comments)}**`);
