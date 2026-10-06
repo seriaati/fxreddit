@@ -11,17 +11,18 @@
 
 Provides improved reddit embeds for services such as Discord.
 
+This is a fork by [seriaati](https://github.com/seriaati) that will continue to receive bug fixes and new features for the original project, [fxreddit](https://github.com/MinnDevelopment/fxreddit) by [MinnDevelopment](https://github.com/MinnDevelopment), for the purposes of [Embed Fixer](https://ef.seria.moe).
+
+Currently, on top of the original project, this fork adds:
+- Discord component embeds
+- YouTube video playback through [Koutube](https://github.com/iGerman00/koutube)
+- And several other bug fixes
+
 ## About
 
 This app is a cloudflare worker service which proxies links for reddit posts and transforms them into [Open Graph](https://ogp.me/) and [Twitter Cards](https://developer.twitter.com/en/docs/twitter-for-websites/cards/overview/markup) meta data for unfurlers.
 
-The main instance is currently hosted on `rxddit.com` and also works with `old.rxddit.com` and `www.rxddit.com`.
-
-### Disclaimer
-
-This service is provided as a best-effort and has no guarantees for availability. I take no responsibility for the uptime or whether it stops working entirely.
-
-I do not plan on maintaining this actively or accepting further changes through pull requests. If I accept something, that does not imply I'm open for any other additions!
+The main instance is currently hosted on `https://fxreddit.seria.moe`.
 
 ## Example Embeds
 
@@ -31,13 +32,15 @@ The currently supported routes are:
 
 | Route                                       | Example                                                                                                          |
 |---------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| `/r/:subreddit/comments/:id/:slug/:comment` | https://rxddit.com/r/shittymoviedetails/comments/160onpq/breaking_actor_from_home_alone_2_arrested_today/jxnkq4g |
-| `/r/:subreddit/comments/:id/:slug`          | https://rxddit.com/r/shittymoviedetails/comments/160onpq/breaking_actor_from_home_alone_2_arrested_today         |
-| `/r/:subreddit/comments/:id`                | https://rxddit.com/r/shittymoviedetails/comments/160onpq                                                         |
-| `/r/:subreddit/s/:id`                       | https://rxddit.com/r/MemePiece/s/15w6vzg82W                                                                      |
-| `/:id`                                      | https://rxddit.com/160onpq                                                                                       |
+| `/r/:subreddit/comments/:id/:slug/:comment` | https://fxreddit.seria.moe/r/shittymoviedetails/comments/160onpq/breaking_actor_from_home_alone_2_arrested_today/jxnkq4g |
+| `/r/:subreddit/comments/:id/:slug`          | https://fxreddit.seria.moe/r/shittymoviedetails/comments/160onpq/breaking_actor_from_home_alone_2_arrested_today         |
+| `/r/:subreddit/comments/:id`                | https://fxreddit.seria.moer/shittymoviedetails/comments/160onpq                                                         |
+| `/r/:subreddit/s/:id`                       | https://fxreddit.seria.moe/r/MemePiece/s/15w6vzg82W                                                                      |
+| `/:id`                                      | https://fxreddit.seria.moe/160onpq                                                                                       |
 
 Or replacing `/r/` with `/u/` and `/user/` for profile posts.
+
+Because this fork is mainly made for [Embed Fixer](https://ef.seria.moe), the URLs are difficult to be replaces manually, using Embed Fixer is recommended.
 
 ### Image Posts
 
