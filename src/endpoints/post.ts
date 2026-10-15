@@ -82,6 +82,9 @@ async function fetch_post_json(url: string) {
     // sr_detail adds the subreddit icon used by the component embed
     const withDetail = new URL(url);
     withDetail.searchParams.set('sr_detail', '1');
+    // Authenticated responses aren't edge-cached by Reddit, so skip the comment tree
+    // (a linked comment is still returned as the first child)
+    withDetail.searchParams.set('limit', '1');
 
     return await fetch(withDetail, {
         signal: AbortSignal.timeout(2000),
