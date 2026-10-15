@@ -4,7 +4,7 @@ import { HTMLElement } from 'node-html-parser';
 import { httpEquiv } from './html';
 import { handleGalleryLinkPost, handleProfilePost, handleShortLinkPost, handleSubredditPost, handleUntypedCommentsLink } from './endpoints/post';
 import { handleShare } from './endpoints/share';
-import { getVideo } from './endpoints/video';
+import { getVideo, setVideoServer } from './endpoints/video';
 import { GITHUB_LINK } from './constants';
 import { fallbackRedirect, getOriginalUrl, redirectPage } from './util';
 import { handleOEmbed } from './reddit/oembed';
@@ -57,10 +57,8 @@ router
     .get('/u/:name/s/:id', handleShare)
     .get('/user/:name/s/:id', handleShare)
     // Video proxying
-    .get('/v/r/:name/comments/:id/:slug?', getVideo)
-    .get('/v/:id', getVideo)
-    .get('/v/user/:name/comments/:id/:slug?', getVideo)
-    .get('/v/u/:name/comments/:id/:slug?', getVideo)
+    .get('/v/:id/:file', getVideo)
+    .head('/v/:id/:file', getVideo)
     // Untyped links
     .get('/comments/:id/comment/:ref', handleUntypedCommentsLink)
     .get('/comments/:id/:slug/:ref', handleUntypedCommentsLink)
@@ -73,6 +71,7 @@ router
 export default {
     async fetch(request: Request, env: Record<string, unknown>, ctx: ExecutionContext): Promise<Response> {
         setRedditCookie(env.REDDIT_COOKIE as string | undefined);
+        setVideoServer(env.VIDEO_SERVER_URL as string | undefined, env.VIDEO_SERVER_SECRET as string | undefined);
         try {
             return await router.handle(request);
         } catch (err) {

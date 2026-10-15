@@ -1,15 +1,7 @@
 import { IRequest, html as HtmlResponse } from 'itty-router';
-import { CUSTOM_DOMAIN, USER_AGENT } from './constants';
-import { HTMLElement, parse as parseHTML } from 'node-html-parser';
+import { CUSTOM_DOMAIN } from './constants';
+import { HTMLElement } from 'node-html-parser';
 import { httpEquiv } from './html';
-
-type PackagedVideo = {
-    url: string,
-    dimensions: {
-        width: number,
-        height: number
-    }
-};
 
 export function cleanSpoiler(string: string): string {
     return string.endsWith('||') ? string.substring(0, string.length - 2) : string;
@@ -52,31 +44,4 @@ export function fallbackRedirect(req: IRequest) {
     return HtmlResponse(html.toString(), {
         headers: { Location: url }, status: 302
     });
-}
-
-export async function get_packaged_video(path: string, timeout = 1000) {
-    try {
-        const url = new URL(`https://www.reddit.com${path}`);
-        const html = await fetch(url, {
-            signal: AbortSignal.timeout(timeout),
-            headers: {
-                'User-Agent': USER_AGENT,
-            },
-        }).then(r => r.text()).then(parseHTML);
-
-        const jsonString = html.querySelector('[packaged-media-json]')?.getAttribute('packaged-media-json');
-
-        if (!jsonString) {
-            return;
-        }
-
-        const json = JSON.parse(jsonString);
-        const videos = json.playbackMp4s?.permutations;
-
-        if (videos) {
-            return videos[videos.length - 1].source as PackagedVideo;
-        }
-    } catch {
-        return;
-    }
 }

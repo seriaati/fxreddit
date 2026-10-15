@@ -5,7 +5,7 @@ import { youtubeEmbed } from '../embeds/youtube';
 import { twitchClipEmbed } from '../embeds/twitch';
 import { twitterLinkEmbed } from '../embeds/twitter';
 import '../html';
-import { get_packaged_video } from '../util';
+import { muxedVideoUrl } from '../endpoints/video';
 import { isNonNullish } from 'remeda';
 import { externalImageEmbed } from '../embeds/image_host';
 import { encodeOEmbed } from './oembed';
@@ -57,7 +57,7 @@ function getDomainHandler(domain?: string, url?: string) {
     }
 }
 
-export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
+export async function postToHtml(post: RedditPost, origin: string): Promise<HTMLElement> {
     const html = new HTMLElement('html', {});
     const head = html.appendChild(new HTMLElement('head', {}));
     const originalUrl = `https://www.reddit.com${post.permalink}`;
@@ -104,19 +104,10 @@ export async function postToHtml(post: RedditPost): Promise<HTMLElement> {
         case 'hosted:video': {
             type = 'video.other';
 
-            const packagedVideo = await get_packaged_video(post.permalink);
-            if (packagedVideo) {
-                const { dimensions: { width, height } } = packagedVideo;
-                // head.video(packagedVideo.source.url, width, height);
-                // Proxied endpoint which resolves to the current video url, to avoid using expiring links
-                head.video(`/v${post.permalink}`, width, height);
-                // Discord doesn't play the video behind the /v redirect, the embed links the file itself
-                embedMedia = [{ kind: 'video', url: packagedVideo.url }];
-            } else {
-                // If we can't find a video with audio, we'll just settle with the one provided by Reddit
-                head.video(post.video_url ?? post.url, post.resolution?.width, post.resolution?.height);
-                embedMedia = [{ kind: 'video', url: post.video_url ?? post.url }];
-            }
+            // Reddit's own video file has no sound, so prefer the muxed one when there is audio to add
+            const videoUrl = (post.video_has_audio ? muxedVideoUrl(origin, post.video_url) : undefined) ?? post.video_url ?? post.url;
+            head.video(videoUrl, post.resolution?.width, post.resolution?.height);
+            embedMedia = [{ kind: 'video', url: videoUrl }];
             break;
         }
         case 'link':

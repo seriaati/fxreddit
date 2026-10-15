@@ -61,13 +61,12 @@ Domain-specific handlers in [src/reddit/compile.ts](src/reddit/compile.ts):`getD
 - Imgur: Image embed handling
 
 #### Video Processing
-Reddit videos often lack audio in the primary stream. The service:
-1. Fetches the post's HTML page from reddit.com
-2. Extracts `packaged-media-json` attribute containing video variants
-3. Selects the highest quality variant (last in array)
-4. Provides a `/v/...` proxy endpoint that redirects to current video URL
+Reddit serves video and audio as separate DASH streams, so `fallback_url` never has sound. A separate video server ([server/](server/), FastAPI + ffmpeg, hosted outside Cloudflare) muxes them:
+1. For videos with `has_audio`, the embed links `/v/<video id>/<fallback file>` on the worker
+2. The worker fetches `<VIDEO_SERVER_URL>/<video id>.mp4` (Cloudflare-cached) and streams it back without redirecting, since Discord doesn't play videos behind redirects
+3. If the server fails or takes over 8s, the worker proxies the silent `v.redd.it/<id>/<fallback file>` instead (Discord gives up after 10s)
 
-See `get_packaged_video()` in [src/util.ts](src/util.ts) and [src/endpoints/video.ts](src/endpoints/video.ts).
+Muxing is only enabled when the `VIDEO_SERVER_URL` and `VIDEO_SERVER_SECRET` secrets are set. See [src/endpoints/video.ts](src/endpoints/video.ts).
 
 #### Gallery Handling
 - Galleries combine `media_metadata` and `gallery_data.items` from Reddit API

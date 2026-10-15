@@ -29,7 +29,7 @@ export async function handlePost(request: IRequest, short: boolean, resolver: (i
 
     try {
         const post = await resolver(id, name, slug, ref);
-        const html = await postToHtml(post);
+        const html = await postToHtml(post, new URL(url).origin);
 
         return new Response(html.toString(), {
             headers,

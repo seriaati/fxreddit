@@ -120,7 +120,7 @@ function getMedia(metadata: RedditListingData, crosspost?: RedditPost): MediaIte
             }
         }
     } else if (metadata.media?.reddit_video) {
-        // No audio, compile.ts swaps in the packaged video when it finds one
+        // No audio, compile.ts swaps in the muxed video when a video server is configured
         items.push({ kind: 'video', url: metadata.media.reddit_video.fallback_url });
     } else if (metadata.post_hint === 'image' && metadata.url) {
         items.push({ kind: 'image', url: unescapeHtml(metadata.url) });
