@@ -6,7 +6,7 @@ import ResponseError from '../response_error';
 import { postToHtml } from '../reddit/compile';
 import { parseRedditPost } from '../reddit/parse';
 import { CACHE_CONFIG } from '../cache';
-import { getLoidCookie, invalidateLoidCookie } from '../reddit/cookie';
+import { getRedditCookie } from '../reddit/cookie';
 import { isArray, isNullish } from 'remeda';
 
 export async function handlePost(request: IRequest, short: boolean, resolver: (id: string, name?: string, slug?: string, ref?: string) => Promise<RedditPost>) {
@@ -73,10 +73,10 @@ function mapTyping(obj: unknown) {
 }
 
 async function fetch_post_json(url: string) {
-    const loid = await getLoidCookie();
+    const cookie = getRedditCookie();
     const headers: HeadersInit = { ...FETCH_HEADERS };
-    if (loid) {
-        headers['Cookie'] = loid;
+    if (cookie) {
+        headers['Cookie'] = cookie;
     }
 
     // sr_detail adds the subreddit icon used by the component embed
@@ -90,12 +90,7 @@ async function fetch_post_json(url: string) {
 }
 
 async function get_post(url: string, commentRef?: string) {
-    let response = await fetch_post_json(url);
-    if (response.status === 403) {
-        // The loid cookie may have expired or been banned, retry once with a fresh one
-        await invalidateLoidCookie();
-        response = await fetch_post_json(url);
-    }
+    const response = await fetch_post_json(url);
     if (!response.ok) {
         throw new ResponseError(response.status, response.statusText);
     }

@@ -9,6 +9,7 @@ import { GITHUB_LINK } from './constants';
 import { fallbackRedirect, getOriginalUrl, redirectPage } from './util';
 import { handleOEmbed } from './reddit/oembed';
 import ResponseError from './response_error';
+import { setRedditCookie } from './reddit/cookie';
 
 const sentry = (typeof SENTRY_ENDPOINT !== 'undefined' && SENTRY_ENDPOINT) ? new Sentry({
     dsn: SENTRY_ENDPOINT,
@@ -70,7 +71,8 @@ router
     .all('*', fallbackRedirect);
 
 export default {
-    async fetch(request: Request, _env: Record<string, unknown>, ctx: ExecutionContext): Promise<Response> {
+    async fetch(request: Request, env: Record<string, unknown>, ctx: ExecutionContext): Promise<Response> {
+        setRedditCookie(env.REDDIT_COOKIE as string | undefined);
         try {
             return await router.handle(request);
         } catch (err) {
