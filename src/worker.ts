@@ -9,7 +9,7 @@ import { GITHUB_LINK } from './constants';
 import { fallbackRedirect, getOriginalUrl, redirectPage } from './util';
 import { handleOEmbed } from './reddit/oembed';
 import ResponseError from './response_error';
-import { setRedditCookie } from './reddit/cookie';
+import { checkRedditCookie, setRedditCookie } from './reddit/cookie';
 
 const sentry = (typeof SENTRY_ENDPOINT !== 'undefined' && SENTRY_ENDPOINT) ? new Sentry({
     dsn: SENTRY_ENDPOINT,
@@ -130,6 +130,14 @@ export default {
             } else {
                 return HtmlResponse(html.toString(), { status: 500 });
             }
+        }
+    },
+
+    // Cron trigger (see wrangler.toml): alert on Discord when the Reddit cookie stops working
+    async scheduled(_controller: ScheduledController, env: Record<string, unknown>, ctx: ExecutionContext): Promise<void> {
+        const webhookUrl = env.DISCORD_WEBHOOK_URL as string | undefined;
+        if (webhookUrl) {
+            ctx.waitUntil(checkRedditCookie(env.REDDIT_COOKIE as string | undefined, webhookUrl));
         }
     },
 };

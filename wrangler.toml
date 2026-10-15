@@ -50,3 +50,7 @@ compatibility_date = "2023-08-14"
 # [[migrations]]
 # tag = "v1"
 # new_classes = ["MyDurableObject"]
+
+# Checks every 6 hours that the REDDIT_COOKIE secret still works, alerting DISCORD_WEBHOOK_URL if not
+[triggers]
+crons = ["0 */6 * * *"]
