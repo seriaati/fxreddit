@@ -20,9 +20,42 @@ Currently, on top of the original project, this fork adds:
 
 ## About
 
-This app is a cloudflare worker service which proxies links for reddit posts and transforms them into [Open Graph](https://ogp.me/) and [Twitter Cards](https://developer.twitter.com/en/docs/twitter-for-websites/cards/overview/markup) meta data for unfurlers.
+This app is a Python (FastAPI) service which proxies links for reddit posts and transforms them into [Open Graph](https://ogp.me/) and [Twitter Cards](https://developer.twitter.com/en/docs/twitter-for-websites/cards/overview/markup) meta data for unfurlers.
 
 The main instance is currently hosted on `https://fxreddit.seria.moe`.
+
+## Run
+
+Since May 2026, Reddit's JSON API only answers logged-in requests from clients that look like a browser. The server sends the session cookie of a Reddit account with Chrome's TLS fingerprint ([curl_cffi](https://github.com/lexiforest/curl_cffi)). Use an account you can afford to lose, Reddit may ban it.
+
+| Environment variable  | Description                                                                                          |
+|-----------------------|------------------------------------------------------------------------------------------------------|
+| `REDDIT_COOKIE`       | `reddit_session=<value>`, copied from the browser's cookies while logged in on reddit.com              |
+| `DISCORD_WEBHOOK_URL` | Optional, alerts when Reddit stops accepting the cookie (checked at startup and every 6 hours)        |
+
+```bash
+docker build -t fxreddit .
+docker run -d --restart unless-stopped -p 8000:8000 -e REDDIT_COOKIE='reddit_session=...' -e DISCORD_WEBHOOK_URL=... fxreddit
+```
+
+Locally without Docker (needs ffmpeg installed):
+
+```bash
+REDDIT_COOKIE='reddit_session=...' uv run uvicorn fxreddit.main:app --port 8000
+```
+
+When the cookie expires, replace it and restart the container.
+
+### Behind Cloudflare
+
+Proxy the domain through Cloudflare, but don't cache the embed pages with a "Cache Everything" rule: bots get the embed and browsers a redirect on the same URL. The server caches embeds itself for 24 hours. Videos (`/v/...`) are cached by Cloudflare as usual.
+
+### Videos with sound
+
+Reddit serves video and audio as separate streams, so `/v/<video id>/<file>` downloads both streams of a `v.redd.it` video and muxes them into one MP4 with ffmpeg (copying the streams, no re-encoding).
+
+- Picks the best quality whose estimated size stays under 50 MB. After 7s it serves the silent video instead (Discord drops embeds whose video takes over 10s). A timed out mux keeps running and is cached for the next request.
+- Results are cached on disk in `/tmp/mux-cache` for 24 hours.
 
 ## Example Embeds
 

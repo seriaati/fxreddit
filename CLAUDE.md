@@ -4,174 +4,98 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FixReddit (rxddit.com) is a Cloudflare Worker service that proxies Reddit links and transforms them into rich Open Graph and Twitter Card embeds for services like Discord. The service handles various Reddit post types (images, videos, galleries, polls, external links) and provides specialized handling for embedded content from YouTube, Twitter, Twitch, and other platforms.
+FixReddit is a Python (FastAPI) service, hosted on a VPS behind Cloudflare, that proxies Reddit links and transforms them into rich Open Graph and Twitter Card embeds (plus Discord component embeds) for services like Discord. It handles various Reddit post types (images, videos, galleries, polls, external links) and provides specialized handling for embedded content from YouTube, Twitter, Twitch, and Imgur.
+
+It was a Cloudflare Worker in TypeScript until Reddit started blocking requests that don't come from a browser (see "Reddit API Interaction" below). The Python port renders byte-identical HTML.
 
 ## Development Commands
 
-### Local Development
 ```bash
-pnpm start              # Start local development server with wrangler dev
-```
-
-### Deployment
-```bash
-pnpm run deploy         # Deploy to Cloudflare Workers
-```
-
-### Code Quality
-```bash
-npx eslint .            # Run ESLint (4-space indent, single quotes, semicolons required)
-npx tsc --noEmit        # Type check without emitting files
+REDDIT_COOKIE='reddit_session=...' uv run uvicorn fxreddit.main:app --port 8000   # Local server (needs ffmpeg)
+uvx ruff check fxreddit                                                          # Lint
+uvx pyright --pythonpath .venv/bin/python fxreddit                               # Type check
+docker build -t fxreddit .                                                       # Production image
 ```
 
 ## Architecture
 
 ### Request Flow
 
-1. **Entry Point** ([src/worker.ts](src/worker.ts)): Main worker event listener and router configuration
-2. **Route Handlers** ([src/endpoints/](src/endpoints/)): Handle different URL patterns
-3. **Reddit Data Fetching** ([src/endpoints/post.ts](src/endpoints/post.ts)): Fetch posts from Reddit's JSON API
-4. **Data Parsing** ([src/reddit/parse.ts](src/reddit/parse.ts)): Transform Reddit API responses into normalized `RedditPost` objects
-5. **HTML Generation** ([src/reddit/compile.ts](src/reddit/compile.ts)): Generate HTML with Open Graph/Twitter Card meta tags
+1. **Entry Point** ([fxreddit/main.py](fxreddit/main.py)): Routes, bot detection, embed cache, error handling
+2. **Reddit Data Fetching** ([fxreddit/reddit.py](fxreddit/reddit.py)): Fetch posts from Reddit's JSON API, resolve share and short links
+3. **Data Parsing** ([fxreddit/parse.py](fxreddit/parse.py)): Transform Reddit API responses into `RedditPost` dataclasses
+4. **HTML Generation** ([fxreddit/compile.py](fxreddit/compile.py)): Generate HTML with Open Graph/Twitter Card meta tags
+5. **Component Embed** ([fxreddit/component_embed.py](fxreddit/component_embed.py)): Discord component embed JSON, must stay within 3000 bytes
 
-### Key Architectural Patterns
+### Routing
+`main.py` matches the raw (percent-encoded) path against `ROUTES` in order, with the same syntax as the worker's itty-router (`:param`, `:param?`, `*`, trailing slashes allowed). Everything goes through one catch-all FastAPI route.
 
-#### Bot Detection and Redirection
-The service distinguishes between bots and regular browsers:
-- **Bots** (detected via User-Agent): Receive HTML with Open Graph/Twitter Card meta tags
-- **Browsers**: Redirected to the original Reddit URL
-- Detection logic in [src/util.ts](src/util.ts):`isBot()`
+### Bot Detection and Redirection
+- **Bots** (User-Agent contains `bot` or `SteamChatURLLookup`): Receive HTML with meta tags
+- **Browsers**: Redirected (302) to the original Reddit URL
 
-#### Reddit API Interaction
-- Uses Reddit's public JSON API (append `.json` to any Reddit URL)
-- Handles various URL patterns: subreddit posts, user posts, short links, share links, comments
-- Request timeout: 2000ms for posts, 5000ms for videos
-- See `get_post()` in [src/endpoints/post.ts](src/endpoints/post.ts)
+Because both get different responses on the same URL, Cloudflare must not cache the pages. `main.py` caches rendered embeds and share link targets in memory for 24 hours instead.
 
-#### Post Type Handling
+### Reddit API Interaction
+- Uses Reddit's JSON API (append `.json` to a post URL), with `sr_detail=1` (subreddit icon) and `limit=1` (skip the comment tree)
+- Since May 2026, Reddit rejects unauthenticated `.json` requests, and logged-in requests unless the client looks like a browser. [fxreddit/clients.py](fxreddit/clients.py) has two clients: `clients.reddit` (curl_cffi, impersonating Chrome's TLS fingerprint, sending `REDDIT_COOKIE`) for every Reddit request, and `clients.web` (httpx) for everything else
+- `reddit.check_cookie_forever()` alerts `DISCORD_WEBHOOK_URL` when `/api/me.json` rejects the cookie
+- Post fetch timeout: 2s
+
+### Post Type Handling
 The `post_hint` field determines embed behavior:
 - `image`: Single image posts
-- `hosted:video`: Reddit-hosted videos (attempts to find version with audio)
-- `link`: External links, may have domain-specific handlers
+- `hosted:video`: Reddit-hosted videos, linked through `/v/...` for sound
+- `link` and others: External links, may have domain-specific handlers in `compile.py:get_domain_handler()` (implementations in [fxreddit/embeds.py](fxreddit/embeds.py)):
+  - YouTube: Direct video stream through the koutube.com API, clips through the clip page's player
+  - Twitch: Clip embed player
+  - Twitter/X: Content from fxtwitter.com
+  - Imgur: Image embed
 
-Domain-specific handlers in [src/reddit/compile.ts](src/reddit/compile.ts):`getDomainHandler()`:
-- YouTube: Converts to embed iframe URL
-- Twitch: Handles clips specifically
-- Twitter/X: Custom embed handling
-- Imgur: Image embed handling
+### Video Processing
+Reddit serves video and audio as separate DASH streams, so `fallback_url` never has sound. [fxreddit/video.py](fxreddit/video.py) muxes them:
+1. For videos with `has_audio`, the embed links `/v/<video id>/<fallback file>`
+2. The server downloads both streams and muxes them with ffmpeg (stream copy), cached on disk for 24h, served directly since Discord doesn't play videos behind redirects
+3. If muxing fails or takes over 7s, it proxies the silent `v.redd.it/<id>/<fallback file>` uncached instead (Discord gives up after 10s)
 
-#### Video Processing
-Reddit serves video and audio as separate DASH streams, so `fallback_url` never has sound. A separate video server ([server/](server/), FastAPI + ffmpeg, hosted outside Cloudflare) muxes them:
-1. For videos with `has_audio`, the embed links `/v/<video id>/<fallback file>` on the worker
-2. The worker fetches `<VIDEO_SERVER_URL>/<video id>.mp4` (Cloudflare-cached) and streams it back without redirecting, since Discord doesn't play videos behind redirects
-3. If the server fails or takes over 8s, the worker proxies the silent `v.redd.it/<id>/<fallback file>` instead (Discord gives up after 10s)
+### Gallery Handling
+- Galleries combine `media_metadata` and `gallery_data.items` from Reddit API, in the order of `gallery_data.items`
+- Discord shows at most 4 images from OG tags, galleries include a "🖼️ Gallery: N Images" indicator
 
-Muxing is only enabled when the `VIDEO_SERVER_URL` and `VIDEO_SERVER_SECRET` secrets are set. See [src/endpoints/video.ts](src/endpoints/video.ts).
-
-#### Gallery Handling
-- Galleries combine `media_metadata` and `gallery_data.items` from Reddit API
-- Discord limitation: Maximum 4 images shown in embed
-- Gallery posts include "🖼️ Gallery: N Images" indicator
-- Images processed in order specified by `gallery_data.items`
-
-#### Error Handling Strategy
+### Error Handling Strategy
+In `main.py:handle_error()`:
 - **403 Forbidden**: Silently handled (likely NSFW content)
-- **429 Rate Limit**: Logged and returns rate limit response
+- **429 Rate Limit**: Returns a rate limit response
 - **5xx Server Errors**: Passed through from Reddit
-- **TimeoutError**: Returns 502 Gateway Timeout
-- **Other Errors**: 10% chance of showing error embed (to avoid caching errors), 90% returns 500
+- **Timeouts**: Returns 502
+- **Other Errors**: 10% chance of showing an error embed (to avoid caching errors), 90% returns 500
 
-See error handling in [src/worker.ts](src/worker.ts) lines 72-127.
+### HTML Generation
+[fxreddit/markup.py](fxreddit/markup.py) `Head` collects the `<head>` elements:
+- `.meta(property, content)`: Add an Open Graph/Twitter meta tag
+- `.image(url, width, height, type)` / `.video(url, width, height, type)`: Add both `og:*` and `twitter:*` tags
 
-### HTML Meta Tag Extensions
-
-Custom prototype extensions in [src/html.ts](src/html.ts) add helper methods to `HTMLElement`:
-- `.meta(property, content)`: Add Open Graph/Twitter meta tag
-- `.image(url, width, height, type)`: Add image meta tags
-- `.video(url, width, height, type)`: Add video meta tags
-
-These methods handle both Open Graph (`og:*`) and Twitter Card (`twitter:*`) tags simultaneously.
-
-## File Structure
-
-```
-src/
-├── worker.ts              # Entry point, router, error handling
-├── constants.ts           # Configuration (URLs, user agents, headers)
-├── types.d.ts            # Global types
-├── util.ts               # Utilities (bot detection, URL conversion, video fetching)
-├── html.ts               # HTMLElement prototype extensions
-├── cache.ts              # Cloudflare cache configuration
-├── response_error.ts     # Custom error class
-├── endpoints/
-│   ├── post.ts           # Main post handling logic
-│   ├── share.ts          # Handle /r/.../s/... share links
-│   └── video.ts          # Video proxy endpoint
-├── reddit/
-│   ├── types.d.ts        # Reddit API response types
-│   ├── parse.ts          # Transform API responses to RedditPost
-│   ├── compile.ts        # Generate HTML from RedditPost
-│   └── oembed.ts         # OEmbed endpoint
-└── embeds/
-    ├── youtube.ts        # YouTube embed handler
-    ├── twitch.ts         # Twitch clip embed handler
-    ├── twitter.ts        # Twitter/X embed handler
-    └── image_host.ts     # External image host handler
-```
+Attribute values only escape quotes (Reddit's JSON already escapes `&`, `<` and `>`) and drop backslashes, matching the node-html-parser output of the worker version.
 
 ## Important Implementation Notes
 
-### Cloudflare Workers Environment
-- This is a Cloudflare Worker, not a Node.js application
-- Uses Web APIs (fetch, AbortSignal, etc.) rather than Node.js APIs
-- No filesystem access
-- Limited to 50ms CPU time per request
-- Type definitions: `@cloudflare/workers-types`
-
-### TypeScript Configuration
-- Target: ES2021
-- Module: ES2022
-- Strict mode enabled
-- `noEmit: true` (Wrangler handles bundling)
-- Module resolution: Bundler
-
-### Dependencies
-- `itty-router`: Lightweight router for Cloudflare Workers
-- `node-html-parser`: HTML parsing/generation
-- `remeda`: Utility functions (type-safe alternatives to lodash)
-- `@borderless/worker-sentry`: Sentry error reporting
-
-### Code Style
-- 4-space indentation
-- Single quotes
-- Semicolons required
-- See [eslint.config.mjs](eslint.config.mjs)
-
-### Constants and Configuration
-All URLs and headers defined in [src/constants.ts](src/constants.ts):
-- `CUSTOM_DOMAIN`: rxddit.com
-- `REDDIT_BASE_URL`: https://www.reddit.com
-- Response cache: 24 hours (86400s)
-
-### Sentry Integration
-The `SENTRY_ENDPOINT` variable must be provided at deployment time (not in version control). Error reporting captures:
-- Request URL, method, headers
-- User IP (from cf-connecting-ip header)
-- Error tags and context
+- Python 3.14, dependencies managed with uv
+- Code style: 4-space indentation, single quotes
+- `CUSTOM_DOMAIN` (rxddit.com) in [fxreddit/constants.py](fxreddit/constants.py) is still upstream's domain, used in the oEmbed link
 
 ## Common Pitfalls
 
 ### Spoiler URLs
-Reddit URLs can end with `||` for spoiler content. Always use `cleanSpoiler()` from [src/util.ts](src/util.ts) when processing URL parameters.
+Reddit URLs can end with `||` for spoiler content. Always use `clean_spoiler()` from [fxreddit/reddit.py](fxreddit/reddit.py) when processing URL parameters.
 
 ### Comment Handling
-Comments are embedded in the same JSON response as the post. The `findComment()` function recursively searches the comment tree to locate specific comment IDs. Comments are attached to posts as `post.comment` in the `RedditPost` structure.
+Comments are embedded in the same JSON response as the post. `find_comment()` recursively searches the comment tree to locate specific comment IDs. Comments are attached to posts as `post.comment`.
 
 ### Poll Data
-Polls may have `null` options if data is broken. Always check `isNonNullish(options)` before processing. See [src/reddit/compile.ts](src/reddit/compile.ts):`compilePollData()`.
+Polls may have `None` options if data is broken. Always check before processing. See `compile.py:compile_poll_data()`.
 
-### Video URLs
-Reddit video URLs expire. The `/v/...` proxy endpoint exists to provide stable URLs that redirect to current video URLs. Never use video URLs directly in embeds; always use the proxy path.
+### JavaScript Semantics
+The port keeps the worker's output: `component_embed.js_round()` rounds halves up like `Math.round`, and `\w` in regexes is spelled `[A-Za-z0-9_]` since JavaScript's is ASCII-only.
 
 ### Crosspost Handling
-Crossposts inherit media from the parent post. The parser in [src/reddit/parse.ts](src/reddit/parse.ts) recursively parses `crosspost_parent_list[0]` and falls back to parent data when the crosspost lacks media.
+Crossposts inherit media from the parent post. The parser recursively parses `crosspost_parent_list[0]` and falls back to parent data when the crosspost lacks media.
