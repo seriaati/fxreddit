@@ -168,7 +168,7 @@ ROUTES: list[tuple[str, str, Handler]] = [
     ('GET', '/', lambda *_: redirect(GITHUB_LINK)),
     # Block all robots / crawlers
     ('GET', '/robots.txt', text('User-agent: *\nDisallow: /')),
-    ('GET', '/security.txt', text('Contact: https://github.com/MinnDevelopment/fxreddit/issues/new')),
+    ('GET', '/security.txt', text(f'Contact: {GITHUB_LINK}/issues/new')),
     ('GET', '/blog', fallback_redirect),
     ('GET', '/new', fallback_redirect),
     # Some static files we don't support
