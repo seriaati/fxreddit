@@ -1,6 +1,6 @@
 REDDIT_BASE_URL = 'https://www.reddit.com'
 REDDIT_SHORT_URL = 'https://redd.it'
-CUSTOM_DOMAIN = 'rxddit.com'
+CUSTOM_DOMAIN = 'fxreddit.seria.moe'
 GITHUB_LINK = 'https://github.com/MinnDevelopment/fxreddit'
 
 RESPONSE_HEADERS = {

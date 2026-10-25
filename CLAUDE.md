@@ -81,7 +81,7 @@ Attribute values only escape quotes (Reddit's JSON already escapes `&`, `<` and 
 
 - Python 3.14, dependencies managed with uv
 - Code style: 4-space indentation, single quotes
-- `CUSTOM_DOMAIN` (rxddit.com) in [fxreddit/constants.py](fxreddit/constants.py) is still upstream's domain, used in the oEmbed link
+- `CUSTOM_DOMAIN` (fxreddit.seria.moe) in [fxreddit/constants.py](fxreddit/constants.py) is the oEmbed link host and the site name in embeds
 
 ## Common Pitfalls
 

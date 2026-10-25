@@ -5,6 +5,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .component_embed import compile_component_embed
+from .constants import CUSTOM_DOMAIN
 from .embeds import (
     external_image_embed,
     twitch_clip_embed,
@@ -54,7 +55,7 @@ async def post_to_html(post: RedditPost, origin: str) -> str:
             'type': 'link',
             'author_name': post.title,
             'author_url': original_url,
-            'provider_name': 'rxddit.com',
+            'provider_name': CUSTOM_DOMAIN,
             'version': '1.0',
         }),
     })
@@ -62,8 +63,8 @@ async def post_to_html(post: RedditPost, origin: str) -> str:
     head.append('link', {'rel': 'canonical', 'href': original_url})
     head.meta('og:url', original_url)
 
-    head.meta('og:site_name', 'rxddit.com')
-    head.meta('twitter:site', 'rxddit.com')
+    head.meta('og:site_name', CUSTOM_DOMAIN)
+    head.meta('twitter:site', CUSTOM_DOMAIN)
     head.meta('theme-color', '#ff4500')
 
     description_text = post.description
