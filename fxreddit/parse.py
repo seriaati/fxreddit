@@ -116,9 +116,9 @@ def parse_reddit_post(metadata: dict[str, Any]) -> RedditPost:
         media_metadata.extend(crosspost.media_metadata)
 
     preview_source = (preview_images[0].get('source') or {}) if preview_images else {}
-    preview_image_url = first_not_empty(
-        preview_source.get('url'), metadata.get('thumbnail'), crosspost and crosspost.preview_image_url
-    )
+    # Without a thumbnail, Reddit puts a placeholder like 'self', 'default' or 'nsfw' there
+    thumbnail = metadata.get('thumbnail') if (metadata.get('thumbnail') or '').startswith('http') else None
+    preview_image_url = first_not_empty(preview_source.get('url'), thumbnail, crosspost and crosspost.preview_image_url)
     sr_detail = metadata.get('sr_detail') or {}
 
     return RedditPost(
