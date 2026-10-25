@@ -3,3 +3,7 @@ node_modules
 .dev.vars
 .wrangler
 .serena/
+.venv
+__pycache__/
+*.py[cod]
+.env

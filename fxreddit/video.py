@@ -2,35 +2,40 @@
 
 import asyncio
 import logging
-import os
 import re
-import secrets
 import tempfile
 import time
 import xml.etree.ElementTree as ET
-from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import HTTPException
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
 
-SECRET = os.environ['MUX_SECRET']
+from . import clients
+
 CACHE_DIR = Path(tempfile.gettempdir()) / 'mux-cache'
 CACHE_TTL = 24 * 60 * 60
-# Discord drops the embed when the video takes over 10s, this leaves the worker time to fall back to the silent video
+# Discord drops the embed when the video takes over 10s, this leaves time to fall back to the silent video
 JOB_TIMEOUT = 7
 # The best quality whose estimated size stays under this is picked, so the download fits in JOB_TIMEOUT
 MAX_SIZE = 50 * 1024 * 1024
 
+REDDIT_VIDEO = re.compile(r'^https://v\.redd\.it/([a-z0-9]+)/((?:DASH|CMAF)_\d+\.mp4)')
 VIDEO_ID = re.compile(r'[a-z0-9]{1,20}')
+VIDEO_FILE = re.compile(r'(?:DASH|CMAF)_\d+\.mp4')
 DURATION = re.compile(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?')
 NS = {'mpd': 'urn:mpeg:dash:schema:mpd:2011'}
 
 log = logging.getLogger('uvicorn.error')
-client: httpx.AsyncClient
-# Discord and the worker can ask for the same video at once, they share one mux
+# Discord can ask for the same video several times at once, they share one mux
 jobs: dict[str, asyncio.Task[Path]] = {}
+
+
+def muxed_video_url(origin: str, video_url: str | None) -> str | None:
+    """URL of the reddit video with sound"""
+    match = REDDIT_VIDEO.match(video_url or '')
+    return f'{origin}/v/{match[1]}/{match[2]}' if match else None
 
 
 def parse_duration(value: str) -> float:
@@ -66,7 +71,7 @@ def pick_streams(mpd: str) -> tuple[str, str | None]:
 
 
 async def download(url: str, path: Path):
-    async with client.stream('GET', url) as response:
+    async with clients.web.stream('GET', url) as response:
         response.raise_for_status()
         with path.open('wb') as file:
             async for chunk in response.aiter_bytes(1 << 16):
@@ -76,7 +81,7 @@ async def download(url: str, path: Path):
 async def mux(video_id: str) -> Path:
     start = time.monotonic()
     base_url = f'https://v.redd.it/{video_id}/'
-    response = await client.get(base_url + 'DASHPlaylist.mpd')
+    response = await clients.web.get(base_url + 'DASHPlaylist.mpd')
     # v.redd.it answers 403 for files that don't exist
     if response.status_code in (403, 404):
         raise HTTPException(404)
@@ -108,6 +113,7 @@ async def mux(video_id: str) -> Path:
 
 
 async def evict_expired():
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     while True:
         cutoff = time.time() - CACHE_TTL
         for path in CACHE_DIR.glob('*.mp4'):
@@ -116,38 +122,36 @@ async def evict_expired():
         await asyncio.sleep(60 * 60)
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    global client
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    client = httpx.AsyncClient(timeout=JOB_TIMEOUT, follow_redirects=True)
-    eviction = asyncio.create_task(evict_expired())
-    yield
-    eviction.cancel()
-    await client.aclose()
-
-
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-
-
-@app.api_route('/{video_id}.mp4', methods=['GET', 'HEAD'])
-async def get_video(video_id: str, authorization: str = Header('')):
-    if not secrets.compare_digest(authorization.encode(), f'Bearer {SECRET}'.encode()):
-        raise HTTPException(401)
-    if not VIDEO_ID.fullmatch(video_id):
-        raise HTTPException(404)
-
+async def muxed_video(video_id: str) -> Path:
     path = CACHE_DIR / f'{video_id}.mp4'
-    if not path.exists():
-        job = jobs.get(video_id)
-        if job is None:
-            job = jobs[video_id] = asyncio.create_task(mux(video_id))
-            job.add_done_callback(lambda _: jobs.pop(video_id, None))
-        try:
-            # Shielded so a timed out request leaves the mux running and cached for the next one
-            path = await asyncio.wait_for(asyncio.shield(job), JOB_TIMEOUT)
-        except TimeoutError:
-            raise HTTPException(504)
+    if path.exists():
+        return path
 
-    # Explicitly public, Cloudflare doesn't cache responses to requests with an Authorization header otherwise
-    return FileResponse(path, media_type='video/mp4', headers={'Cache-Control': f'public, max-age={CACHE_TTL}'})
+    job = jobs.get(video_id)
+    if job is None:
+        job = jobs[video_id] = asyncio.create_task(mux(video_id))
+        job.add_done_callback(lambda _: jobs.pop(video_id, None))
+    # Shielded so a timed out request leaves the mux running and cached for the next one
+    return await asyncio.wait_for(asyncio.shield(job), JOB_TIMEOUT)
+
+
+async def get_video(method: str, video_id: str, file: str) -> Response:
+    if not VIDEO_ID.fullmatch(video_id) or not VIDEO_FILE.fullmatch(file):
+        return Response(status_code=404)
+
+    try:
+        path = await muxed_video(video_id)
+        # Discord doesn't play videos behind a redirect, so the file is served directly
+        return FileResponse(path, media_type='video/mp4', headers={'Cache-Control': f'public, max-age={CACHE_TTL}'})
+    except Exception as e:  # noqa: BLE001 - any failure falls back to the silent video
+        log.warning('Serving %s without sound: %r', video_id, e)
+
+    # Not cached, so the next request can get the video with sound
+    response = await clients.web.send(clients.web.build_request(method, f'https://v.redd.it/{video_id}/{file}'), stream=True)
+    headers = {key: response.headers[key] for key in ('Content-Type', 'Content-Length') if key in response.headers}
+    return StreamingResponse(
+        response.aiter_raw(),
+        status_code=response.status_code,
+        headers={**headers, 'Cache-Control': 'no-store'},
+        background=BackgroundTask(response.aclose),
+    )

@@ -1,9 +1,11 @@
 [project]
-name = "fxreddit-video-server"
+name = "fxreddit"
 version = "0.1.0"
-description = "Muxes the separate video and audio streams of Reddit videos into one MP4 for fxreddit"
+description = "Improved Reddit embeds for Discord and other services"
 requires-python = ">=3.14"
 dependencies = [
+    "cachetools>=7.2.5",
+    "curl-cffi>=0.16.3",
     "fastapi>=0.143.1",
     "httpx>=0.28.1",
     "uvicorn>=0.54.0",

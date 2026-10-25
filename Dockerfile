@@ -32,4 +32,5 @@ USER nonroot
 WORKDIR /app
 
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Proxy headers give the public https:// URL behind Cloudflare, used for the video links in embeds
+CMD ["uvicorn", "fxreddit.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
