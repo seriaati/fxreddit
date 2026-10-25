@@ -58,7 +58,7 @@ The currently supported routes are:
 |---------------------------------------------|------------------------------------------------------------------------------------------------------------------|
 | `/r/:subreddit/comments/:id/:slug/:comment` | https://fxreddit.seria.moe/r/shittymoviedetails/comments/160onpq/breaking_actor_from_home_alone_2_arrested_today/jxnkq4g |
 | `/r/:subreddit/comments/:id/:slug`          | https://fxreddit.seria.moe/r/shittymoviedetails/comments/160onpq/breaking_actor_from_home_alone_2_arrested_today         |
-| `/r/:subreddit/comments/:id`                | https://fxreddit.seria.moer/shittymoviedetails/comments/160onpq                                                         |
+| `/r/:subreddit/comments/:id`                | https://fxreddit.seria.moe/r/shittymoviedetails/comments/160onpq                                                        |
 | `/r/:subreddit/s/:id`                       | https://fxreddit.seria.moe/r/MemePiece/s/15w6vzg82W                                                                      |
 | `/:id`                                      | https://fxreddit.seria.moe/160onpq                                                                                       |
 
