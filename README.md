@@ -1,12 +1,3 @@
-[image-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/image-post-embed.png
-[gallery-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/gallery-post-embed.png
-[video-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/video-post-embed.gif
-[youtube-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/youtube-post-embed.gif
-[article-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/article-post-embed.png
-[tweet-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/tweet-post-embed.png
-[twitch-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/twitch-post-embed.gif
-[poll-post-embed]: https://raw.githubusercontent.com/MinnDevelopment/fxreddit/master/assets/poll-post-embed.png
-
 # FixReddit
 
 Provides improved reddit embeds for services such as Discord.
@@ -57,7 +48,7 @@ Reddit serves video and audio as separate streams, so `/v/<video id>/<file>` dow
 - Picks the best quality whose estimated size stays under 50 MB. After 7s it serves the silent video instead (Discord drops embeds whose video takes over 10s). A timed out mux keeps running and is cached for the next request.
 - Results are cached on disk in `/tmp/mux-cache` for 24 hours.
 
-## Example Embeds
+## Supported Posts
 
 This has specialized handling for various types of reddit posts.
 
@@ -79,46 +70,30 @@ Because this fork is mainly made for [Embed Fixer](https://ef.seria.moe), the UR
 
 An image post is a reddit post with just an uploaded image. This provides the title and image as a large image card.
 
-![image post embed][image-post-embed]
-
 ### Gallery Posts
 
 A gallery post is a reddit post with multiple attached images. Since Discord can only show a up to four images for link embeds, the description includes a tag line that indicates the total number of images.
-
-![gallery post embed][gallery-post-embed]
 
 ### Video Posts
 
 A video post works exactly like an image post, except for providing a video instead.
 
-![video post embed][video-post-embed]
-
 ### YouTube Posts
 
 A YouTube post is a video post that links to a youtube video. The service will instead provide a link to the embed iframe, which can be handled by Discord as a youtube iframe instead. This also includes clips!
-
-![youtube post embed][youtube-post-embed]
 
 ### Article Posts
 
 Article posts are simply external links, and sometimes provide a thumbnail.
 
-![article post embed][article-post-embed]
-
 ### Tweet Posts
 
 Tweet posts are links to tweets, which might include images or videos and text content.
-
-![tweet post embed][tweet-post-embed]
 
 ### Twitch Posts
 
 Twitch posts are links to twitch clips or VODs.
 
-![twitch post embed][twitch-post-embed]
-
 ### Poll Posts
 
 Polls including votes (once finished).
-
-![poll embed][poll-post-embed]
