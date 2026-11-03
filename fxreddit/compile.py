@@ -14,10 +14,8 @@ from .embeds import (
 )
 from .markup import Head
 from .oembed import encode_oembed
-from .parse import MediaItem, RedditPost
+from .parse import MediaItem, RedditPost, is_image_url
 from .video import muxed_video_url
-
-IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif']
 
 Handler = Callable[[RedditPost, str, Head], Awaitable[None]]
 
@@ -118,12 +116,10 @@ async def post_to_html(post: RedditPost, origin: str) -> str:
                 description_text += post.oembed.get('title', '')
             elif post.preview_image_url:
                 head.image(post.preview_image_url, width, height, 'large' if post.is_media_only else 'thumbnail')
-            elif post.url.startswith('https://'):
-                path = urlsplit(post.url).path
-                if any(path.endswith(f'.{extension}') for extension in IMAGE_EXTENSIONS):
-                    head.image(post.url, width, height, 'large')
-                elif path.endswith('.mp4'):
-                    head.video(post.url)
+            elif is_image_url(post.url):
+                head.image(post.url, width, height, 'large')
+            elif post.url.startswith('https://') and urlsplit(post.url).path.endswith('.mp4'):
+                head.video(post.url)
 
     head.meta('og:type', type)
 

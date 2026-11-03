@@ -3,6 +3,9 @@
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from urllib.parse import urlsplit
+
+IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif']
 
 
 @dataclass
@@ -185,10 +188,18 @@ def get_media(metadata: dict[str, Any], crosspost: RedditPost | None) -> list[Me
         items.append(MediaItem('video', reddit_video['fallback_url']))
     elif metadata.get('post_hint') == 'image' and metadata.get('url'):
         items.append(MediaItem('image', unescape_html(metadata['url'])))
+    elif is_image_url(metadata.get('url') or ''):
+        # Image posts sometimes come without post_hint or preview
+        items.append(MediaItem('image', unescape_html(metadata['url'])))
     elif preview_images and (preview_images[0].get('source') or {}).get('url'):
         items.append(MediaItem('image', unescape_html(preview_images[0]['source']['url'])))
 
     return items or (crosspost.media if crosspost else [])
+
+
+def is_image_url(url: str) -> bool:
+    path = urlsplit(url).path
+    return url.startswith('https://') and any(path.endswith(f'.{extension}') for extension in IMAGE_EXTENSIONS)
 
 
 def get_description(metadata: dict[str, Any]) -> str:
